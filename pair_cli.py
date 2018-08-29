@@ -79,6 +79,7 @@ def main():
 
                     if dev:
                         tcp_port = int(dev['tcpPort'])
+                        logging.debug('Device %s is at tcp://%s:%d', dev['deviceName'], sender[0], tcp_port)
 
                         #init new connection
                         ts = socket.socket()
@@ -121,6 +122,9 @@ def main():
                     pkt = netpkt(PAIRING, {'pair': False})
                     ts.send(pkt)
                     ts.send(b'\n')
+                wait_for.remove(con)
+                con.close()
+
     except KeyboardInterrupt:
         print()
         
