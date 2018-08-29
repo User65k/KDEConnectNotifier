@@ -101,9 +101,11 @@ def main():
                 #a new client is waiting for us to connect
                 data, sender = discovery.recvfrom(1024)
 
-                devID, tcp_port = handle_identity(data)
+                dev = handle_identity(data)
 
-                if devID:
+                if dev:
+                    devID = dev['deviceId']
+                    tcp_port = dev['tcpPort']
                     logging.debug('Device %s is at tcp://%s:%d', devID, sender[0], tcp_port)
 
                     #init new connection
@@ -120,8 +122,9 @@ def main():
                 #a new client is connecting
                 ts, client_address = server.accept()
 
-                devID, p = handle_identity(ts.recv(4096))
-                if devID:
+                dev = handle_identity(ts.recv(4096))
+                if dev:
+                    devID = dev['deviceId']
                     #send_identity(connection)
 
                     connections[ts] = devID

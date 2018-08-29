@@ -52,7 +52,7 @@ def main():
     #listen for new clients
     server = socket.socket()
     server.bind(('0.0.0.0', LISTENING_PORT))
-    server.listen(5)
+    server.listen(15)
 
     wait_for = [discovery, server]
     connections = {}
@@ -70,27 +70,26 @@ def main():
                 #a new client is waiting for us to connect
                 data, sender = discovery.recvfrom(1024)
 
-                devID, tcp_port = handle_identity(data, get_unpaired=True)
+                dev = handle_identity(data, get_unpaired=True)
 
-                if devID:
-                    logging.debug('Device %s is at tcp://%s:%d', devID, sender[0], tcp_port)
+                if dev:
+                    tcp_port = dev['tcpPort']
 
                     #init new connection
                     ts = socket.socket()
                     ts.connect((sender[0], tcp_port))
                     send_identity(ts)
 
-                    connections[ts] = devID
+                    connections[ts] = dev
                     wait_for.append(ts)
 
             elif sckt==server:
                 #a new client is connecting
                 ts, client_address = server.accept()
 
-                devID, p = handle_identity(ts.recv(4096), get_unpaired=True)
-                if devID:
-
-                    connections[ts] = devID
+                dev = handle_identity(ts.recv(4096), get_unpaired=True)
+                if dev:
+                    connections[ts] = dev
                     wait_for.append(ts)
                 else:
                     #no valid msg
@@ -99,14 +98,17 @@ def main():
         for con in wait_for:
             if con==server or con==discovery:
                 continue
+            dev = connections[con]
             #ask user if its ok to pair
+            cool = input("Pait with {deviceName} [y/N]: ".format(**dev))=="y"
+
             if cool:
                 send_pair(con, pkey)
                 # -> recv key
                 pkt = con.recv(4096).decode('ascii')
                 p = loads(pkt)
                 if p['type'] == PAIRING:
-                    with open(KEY_PEER % (connections[con]), 'w') as ref:
+                    with open(KEY_PEER % (dev['deviceId']), 'w') as ref:
                         ref.write(p['body']['publicKey'])
             else:
 

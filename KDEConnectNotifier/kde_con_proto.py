@@ -168,18 +168,15 @@ def handle_identity(data, get_unpaired=False):
 
     :param bytes data: bytes containing identity packet of peer
     :param bool get_unpaired: also return unpaired devices. Delaut no
-    :return: tuple of deviceID and TCP Port to connect it
-    :rtype: tuple
+    :return: IDENTITY description. keys: deviceId, deviceName, deviceType, tcpPort (opt)
+    :rtype: dict
     """
     pkt = loads(data.decode('ascii'))
     logging.debug('discovered: %r', pkt)
     if pkt['type'] == IDENTITY:
         devID = pkt['body']['deviceId']
-        tcp_port = None
-        if 'tcpPort' in pkt['body']:
-            tcp_port = pkt['body']['tcpPort']
-
+        
         if get_unpaired or path.exists(KEY_PEER % (devID)):
-            return devID, tcp_port
+            return pkt['body']
 
-    return None, None
+    return None
