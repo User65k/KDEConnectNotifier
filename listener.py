@@ -29,7 +29,6 @@ from select import select
 from KDEConnectNotifier.consts import DISCOVERY_PORT, RUNCOMMAND, NOTIFICATION
 from KDEConnectNotifier.kde_con_proto import get_key, send_crypted, handle_packets, handle_identity, send_identity, netpkt
 
-LISTENING_PORT = 1715
 
 def handle_RUNCOMMAND(body, devID, sckt):
     if 'requestCommandList' in body:
@@ -80,7 +79,7 @@ def main():
 
     #listen for new clients
     server = socket.socket()
-    server.bind(('0.0.0.0', LISTENING_PORT))
+    server.bind(('0.0.0.0', DISCOVERY_PORT))
     server.listen(5)
 
     wait_for = [bell, discovery, server]
@@ -105,7 +104,7 @@ def main():
 
                 if dev:
                     devID = dev['deviceId']
-                    tcp_port = dev['tcpPort']
+                    tcp_port = int(dev['tcpPort'])
                     logging.debug('Device %s is at tcp://%s:%d', devID, sender[0], tcp_port)
 
                     #init new connection
