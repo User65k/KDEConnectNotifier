@@ -27,9 +27,11 @@ from os import path
 from base64 import b64decode, b64encode
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
+from socket import SOCK_DGRAM
 
-from KDEConnectNotifier.consts import PAIRING, NOTIFICATION, RUNCOMMAND, ENCRYPTED, IDENTITY, KEY_FILE_NAME, KEY_PEER
+from KDEConnectNotifier.consts import DISCOVERY_PORT, PAIRING, NOTIFICATION, RUNCOMMAND, ENCRYPTED, IDENTITY, KEY_FILE_NAME, KEY_PEER
 
+OUR_KDE_DEVID = '123'
 
 def netpkt(tp, data):
     """
@@ -49,18 +51,24 @@ def send_identity(ts):
     """
     :param socket.socket ts: socket to send on
     """
-    pkt = netpkt(IDENTITY,
-                {
-                    'deviceId': '123',
-                    'deviceName': 'Door',
-                    'deviceType': 'desktop',
-                    'protocolVersion': 5,
-                    'SupportedIncomingInterfaces': [RUNCOMMAND],
-                    'SupportedOutgoingInterfaces': [NOTIFICATION, RUNCOMMAND]
-                })
+    pl = {
+        'deviceId': OUR_KDE_DEVID,
+        'deviceName': 'Door',
+        'deviceType': 'desktop',
+        'protocolVersion': 5,
+        'SupportedIncomingInterfaces': [RUNCOMMAND],
+        'SupportedOutgoingInterfaces': [NOTIFICATION, RUNCOMMAND]
+    }
+    if ts.type == SOCK_DGRAM:
+        pl['tcpPort'] = str(DISCOVERY_PORT)
+
+    pkt = netpkt(IDENTITY,pl)
     logging.debug('identity: %s', pkt)
-    ts.send(pkt)
-    ts.send(b'\n')
+    if ts.type == SOCK_DGRAM:
+        ts.sendto(pkt+b'\n',('<broadcast>',DISCOVERY_PORT))
+    else:
+        ts.send(pkt)
+        ts.send(b'\n')
 
 def send_pair(ts, key):
     """
@@ -171,12 +179,22 @@ def handle_identity(data, get_unpaired=False):
     :return: IDENTITY description. keys: deviceId, deviceName, deviceType, tcpPort (opt)
     :rtype: dict
     """
-    pkt = loads(data.decode('ascii'))
-    logging.debug('discovered: %r', pkt)
-    if pkt['type'] == IDENTITY:
-        devID = pkt['body']['deviceId']
-        
-        if get_unpaired or path.exists(KEY_PEER % (devID)):
-            return pkt['body']
+    try:
+        pkt = loads(data.decode('ascii').strip())
+        logging.debug('discovered: %r', pkt)
+        if pkt['type'] == IDENTITY:
+            devID = pkt['body']['deviceId']
+
+            if devID==OUR_KDE_DEVID:
+                #always ignore yourself
+                return None
+            
+            if get_unpaired or path.exists(KEY_PEER % (devID)):
+                return pkt['body']
+
+    except ValueError:
+        print(data)
+    except KeyError:
+        print(data)
 
     return None
