@@ -16,7 +16,7 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 # AUTHORS
-# Maciek Borzecki <maciek.borzecki (at] gmail.com>
+# User65k
 #
 
 import sys
