@@ -21,6 +21,7 @@
 #
 
 DISCOVERY_PORT = 1714
+DESKTOPS_PORT = 1716
 
 PAIRING = 'kdeconnect.pair'
 NOTIFICATION = 'kdeconnect.notification'

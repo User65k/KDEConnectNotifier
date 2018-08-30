@@ -29,7 +29,7 @@ from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
 from socket import SOCK_DGRAM
 
-from KDEConnectNotifier.consts import DISCOVERY_PORT, PAIRING, NOTIFICATION, RUNCOMMAND, ENCRYPTED, IDENTITY, KEY_FILE_NAME, KEY_PEER
+from KDEConnectNotifier.consts import DESKTOPS_PORT, DISCOVERY_PORT, PAIRING, NOTIFICATION, RUNCOMMAND, ENCRYPTED, IDENTITY, KEY_FILE_NAME, KEY_PEER
 
 OUR_KDE_DEVID = '123'
 
@@ -65,7 +65,7 @@ def send_identity(ts):
     pkt = netpkt(IDENTITY,pl)
     logging.debug('identity: %s', pkt)
     if ts.type == SOCK_DGRAM:
-        ts.sendto(pkt+b'\n',('<broadcast>',DISCOVERY_PORT))
+        ts.sendto(pkt+b'\n',('<broadcast>',DESKTOPS_PORT))
     else:
         ts.send(pkt)
         ts.send(b'\n')
