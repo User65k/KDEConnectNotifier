@@ -90,13 +90,21 @@ def main():
         rl = select(wait_for,[],[])[0]
         for sckt in rl:
             if sckt==bell:
+                logging.info("bell")
                 #someone is at the door
-                bell.recv(4096)
+                bell.recv(10)
                 #send notifications
                 for s, h in connections.items():
-                    SendNotification(h, s)
+                    try:
+                        SendNotification(h, s)
+                    except socket.error:
+                        #remove the dead
+                        wait_for.remove(s)
+                        del connections[s]
+                        del pending_data[h]
 
             elif sckt==discovery:
+                logging.info("discovered a client")
                 #a new client is waiting for us to connect
                 data, sender = discovery.recvfrom(1024)
 
@@ -118,6 +126,7 @@ def main():
                     wait_for.append(ts)
 
             elif sckt==server:
+                logging.info("new client connecting")
                 #a new client is connecting
                 ts, client_address = server.accept()
 
@@ -134,6 +143,7 @@ def main():
                     ts.close()
 
             else:
+                logging.info("got peer data")
                 #get data from other stations
                 devID = connections[sckt]
                 pending_pkt = pending_data[devID] + sckt.recv(4096).decode('ascii')
