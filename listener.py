@@ -143,10 +143,24 @@ def main():
                     ts.close()
 
             else:
-                logging.info("got peer data")
+                data = b""
+                try:
+                    data = sckt.recv(4096)
+                except socket.error:
+                    pass
+                
                 #get data from other stations
                 devID = connections[sckt]
-                pending_pkt = pending_data[devID] + sckt.recv(4096).decode('ascii')
+
+                if not data:
+                    #remove the dead
+                    wait_for.remove(sckt)
+                    del connections[sckt]
+                    del pending_data[devID]
+                    continue
+
+                logging.info("got peer data")
+                pending_pkt = pending_data[devID] + data.decode('ascii')
                 pos = pending_pkt.find('\n')
                 if pos == -1:
                     logging.debug('expecting more data')
