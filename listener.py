@@ -100,8 +100,14 @@ def main():
                     except socket.error:
                         #remove the dead
                         wait_for.remove(s)
-                        del connections[s]
-                        del pending_data[h]
+                        try:
+                            del connections[s]
+                        except KeyError:
+                            pass
+                        try:
+                            del pending_data[h]
+                        except KeyError:
+                            pass
 
             elif sckt==discovery:
                 logging.info("discovered a client")
@@ -155,8 +161,14 @@ def main():
                 if not data:
                     #remove the dead
                     wait_for.remove(sckt)
-                    del connections[sckt]
-                    del pending_data[devID]
+                    try:
+                        del connections[sckt]
+                    except KeyError:
+                        pass
+                    try:
+                        del pending_data[devID]
+                    except KeyError:
+                        pass
                     continue
 
                 logging.info("got peer data")
