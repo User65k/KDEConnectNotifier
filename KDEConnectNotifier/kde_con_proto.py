@@ -147,10 +147,16 @@ def send_crypted(clear, host, socket):
     with open(KEY_PEER % (host), 'rb') as inf:
         key = RSA.importKey(inf.read())
     cipher = PKCS1_v1_5.new(key)
-    enc = b64encode(cipher.encrypt(clear), None)
+
+    #longer than the RSA modulus (in bytes) minus 11
+    chunks, chunk_size = len(clear), 245
+    parts = [ clear[i:i+chunk_size] for i in range(0, chunks, chunk_size) ]
+    enc = []
+    for plain in parts:
+        enc.append( b64encode(cipher.encrypt(plain), None).decode('ascii') )
 
     pkt = netpkt(ENCRYPTED,
-                {'data':[enc.decode('ascii')]
+                {'data':enc
                 })
     socket.send(pkt)
     socket.send(b'\n')
