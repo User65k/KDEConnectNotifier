@@ -171,8 +171,13 @@ def main():
                         pass
                     continue
 
-                logging.info("got peer data")
-                pending_pkt = pending_data[devID] + data.decode('ascii')
+                logging.debug("got peer data")
+                pending_pkt = ""
+                try:
+                    pending_pkt = pending_data[devID]
+                except KeyError:
+                    pass
+                pending_pkt += data.decode('ascii')
                 pos = pending_pkt.find('\n')
                 if pos == -1:
                     logging.debug('expecting more data')
@@ -196,4 +201,5 @@ def main():
                 pending_data[devID] = pending_pkt
 
 if __name__ == '__main__':
+    #logging.basicConfig(level=logging.INFO)
     main()
