@@ -73,13 +73,13 @@ def main():
                 # -> send ident
                 if sckt==discovery:
                     #a new client is waiting for us to connect
-                    data, sender = discovery.recvfrom(1024)
+                    data, sender = discovery.recvfrom(4096)
 
                     dev = handle_identity(data, get_unpaired=True)
 
                     if dev:
                         tcp_port = int(dev['tcpPort'])
-                        logging.debug('Device %s is at tcp://%s:%d', dev['deviceName'], sender[0], tcp_port)
+                        logging.info('Device %s is at tcp://%s:%d', dev['deviceName'], sender[0], tcp_port)
 
                         #init new connection
                         ts = socket.socket()
@@ -111,12 +111,18 @@ def main():
                 if cool:
                     send_pair(con, pkey)
                     # -> recv key
-                    pkt = con.recv(4096).decode('ascii').strip()
-                    p = loads(pkt)
-                    logging.debug("Device {i[deviceName]} sent: {d}".format(i=dev, d=p))
+                    pkt = con.recv(4096).decode('ascii').strip() #TODO no answer -> timeout
+                    p = {'type':'?'}
+                    try:
+                        p = loads(pkt)
+                    except ValueError:
+                        logging.exception("odd data from device: "+pkt)
+
+                    logging.info("Device {i[deviceName]} sent: {d}".format(i=dev, d=p))
                     if p['type'] == PAIRING:
                         with open(KEY_PEER % (dev['deviceId']), 'w') as ref:
                             ref.write(p['body']['publicKey'])
+                        print("Device added!")
                 else:
 
                     pkt = netpkt(PAIRING, {'pair': False})
@@ -135,5 +141,5 @@ def main():
         con.close()
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     main()

@@ -60,7 +60,7 @@ def SendNotification(host, socket):
                 #'text':'text',
                 #'time':'123'
                 })
-    logging.debug('cmd list: %s', pkt)
+    logging.debug('notification: %s', pkt)
     send_crypted(pkt, host, socket)
 
 callbacks = {RUNCOMMAND: handle_RUNCOMMAND}
@@ -110,9 +110,9 @@ def main():
                             pass
 
             elif sckt==discovery:
-                logging.info("discovered a client")
+                logging.debug("discovered a client")
                 #a new client is waiting for us to connect
-                data, sender = discovery.recvfrom(1024)
+                data, sender = discovery.recvfrom(4096)
 
                 dev = handle_identity(data)
 
