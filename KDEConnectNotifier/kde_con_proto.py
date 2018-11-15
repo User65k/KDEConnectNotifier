@@ -33,6 +33,32 @@ from KDEConnectNotifier.consts import DESKTOPS_PORT, DISCOVERY_PORT, PAIRING, NO
 
 OUR_KDE_DEVID = '123'
 
+desc_list = {}
+func_list = {}
+def handle_RUNCOMMAND(body, devID, sckt):
+    global func_list, desc_list
+    if 'requestCommandList' in body:
+        pkt = netpkt("kdeconnect.runcommand.request", {'commandList': desc_list})
+        logging.debug('cmd list: %s', pkt)
+        send_crypted(pkt, devID, sckt)
+    elif 'key' in body:
+        fid = body['key']
+        logging.info('exec: #%s', fid)
+        if fid in func_list:
+            try:
+                func_list[fid](devID)
+            except Exception:
+                logging.exception("can't exec function")
+
+def runcmd(func):
+    global func_list, desc_list
+    from time import time
+    new_id = str(time())
+    desc_list[new_id] = {'name': func.__doc__,'command': func.__name__}
+    func_list[new_id] = func
+
+default_callbacks = {RUNCOMMAND: handle_RUNCOMMAND}
+
 def netpkt(tp, data):
     """
     Construct a new packet
@@ -83,7 +109,7 @@ def send_pair(ts, key):
     ts.send(pkt)
     ts.send(b'\n')
 
-def handle_packets(pkts, cipher, host, socket, callbacks):
+def handle_packets(pkts, cipher, host, socket, callbacks = default_callbacks):
     """
     :param list pkts: list of packets
     :param Crypto.Cipher.PKCS1_v1_5 cipher: decryption class

@@ -26,34 +26,25 @@ import logging
 from Crypto.Cipher import PKCS1_v1_5
 from select import select
 
-from KDEConnectNotifier.consts import DISCOVERY_PORT, RUNCOMMAND, NOTIFICATION
-from KDEConnectNotifier.kde_con_proto import get_key, send_crypted, handle_packets, handle_identity, send_identity, netpkt
+from KDEConnectNotifier.consts import DISCOVERY_PORT, NOTIFICATION
+from KDEConnectNotifier.kde_con_proto import get_key, send_crypted, handle_packets, handle_identity, send_identity, netpkt, runcmd
 
+@runcmd
+def command(devID):
+    """name"""
+    pass # write your code here
 
-def handle_RUNCOMMAND(body, devID, sckt):
-    if 'requestCommandList' in body:
-        pkt = netpkt("kdeconnect.runcommand.request",
-                    {'commandList': {
-                        '123':{
-                        'name': 'name',
-                        'command': 'command'}
-                    }})
-        logging.debug('cmd list: %s', pkt)
-        send_crypted(pkt, devID, sckt)
-    elif 'key' in body:
-        logging.debug('exec: #%s', body['key'])
-        #echo -n "AUF" | nc -q 1 localhost 14000
-        buz = socket.socket()
-        buz.connect(('localhost', 14000))
-        buz.send(b'AUF')
-        buz.close()
+@runcmd
+def command2(devID):
+    """name 2"""
+    pass # write your code here
 
 def SendNotification(host, socket):
     #test notify
     pkt = netpkt(NOTIFICATION,
                 {'id':'123',
-                'ticker':'ticker',
-                'appName':'appName',
+                'ticker':'Tuer Klingel',
+                'appName':'Tuer Klingel',
                 #'payload': //bitmap
                 'isClearable':False,
                 #'title':'title',
@@ -62,8 +53,6 @@ def SendNotification(host, socket):
                 })
     logging.debug('notification: %s', pkt)
     send_crypted(pkt, host, socket)
-
-callbacks = {RUNCOMMAND: handle_RUNCOMMAND}
 
 def main():
     key = get_key()
@@ -195,7 +184,7 @@ def main():
                         # logging.debug('pos %r', pos)
 
                     logging.debug('found %d complete packets', len(pkts))
-                    handle_packets(pkts, cipher, devID, sckt, callbacks)
+                    handle_packets(pkts, cipher, devID, sckt)
                 
                 #remember half pkgs
                 pending_data[devID] = pending_pkt
