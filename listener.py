@@ -112,7 +112,10 @@ def main():
 
                     #init new connection
                     ts = socket.socket()
-                    ts.connect((sender[0], tcp_port))
+                    try:
+                        ts.connect((sender[0], tcp_port))
+                    except TimeoutError:
+                        continue
                     send_identity(ts)
                     #send_pair(ts, key.publickey().exportKey())
 
