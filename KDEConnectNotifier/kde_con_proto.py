@@ -27,11 +27,25 @@ from os import path
 from base64 import b64decode, b64encode
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
-from socket import SOCK_DGRAM
+from socket import SOCK_DGRAM, gethostname
 
 from KDEConnectNotifier.consts import DESKTOPS_PORT, DISCOVERY_PORT, PAIRING, NOTIFICATION, RUNCOMMAND, ENCRYPTED, IDENTITY, KEY_FILE_NAME, KEY_PEER
 
-OUR_KDE_DEVID = '123'
+OUR_KDE_DEVID = None
+def getKdeDevId():
+    """return an identifier for this host.
+    On android ANDROID_ID (64bit number as 16byte hexstr) is used.
+
+    We use the MAC as (12byte) hexstr
+    """
+    global OUR_KDE_DEVID
+    if OUR_KDE_DEVID:
+        return OUR_KDE_DEVID
+
+    from uuid import getnode
+    OUR_KDE_DEVID = getnode().to_bytes(6, byteorder="big").hex()
+
+    return OUR_KDE_DEVID
 
 desc_list = {}
 func_list = {}
@@ -78,8 +92,8 @@ def send_identity(ts):
     :param socket.socket ts: socket to send on
     """
     pl = {
-        'deviceId': OUR_KDE_DEVID,
-        'deviceName': 'Door',
+        'deviceId': getKdeDevId(),
+        'deviceName': gethostname(),
         'deviceType': 'desktop',
         'protocolVersion': 5,
         'SupportedIncomingInterfaces': [RUNCOMMAND],
@@ -217,7 +231,7 @@ def handle_identity(data, get_unpaired=False):
         if pkt['type'] == IDENTITY:
             devID = pkt['body']['deviceId']
 
-            if devID==OUR_KDE_DEVID:
+            if devID == getKdeDevId():
                 #always ignore yourself
                 return None
             
