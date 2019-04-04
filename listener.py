@@ -26,7 +26,7 @@ import logging
 from Crypto.Cipher import PKCS1_v1_5
 from select import select
 
-from KDEConnectNotifier.consts import DISCOVERY_PORT, NOTIFICATION
+from KDEConnectNotifier.consts import DISCOVERY_PORT, NOTIFICATION, DESKTOPS_PORT
 from KDEConnectNotifier.kde_con_proto import get_key, send_crypted, handle_packets, handle_identity, send_identity, netpkt, runcmd
 
 @runcmd
@@ -66,12 +66,16 @@ def main():
     discovery = socket.socket(type=socket.SOCK_DGRAM)
     discovery.bind(('0.0.0.0', DISCOVERY_PORT))
 
+    # listen for packet on UDP socket
+    anounce = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    anounce.bind(('::', DESKTOPS_PORT))
+
     #listen for new clients
-    server = socket.socket()
-    server.bind(('0.0.0.0', DISCOVERY_PORT))
+    server = socket.socket(socket.AF_INET6)
+    server.bind(('::', DISCOVERY_PORT))
     server.listen(5)
 
-    wait_for = [bell, discovery, server]
+    wait_for = [bell, discovery, server, anounce]
     connections = {} # connection -> DeviceID
     pending_data = {} # DeviceID -> DataChunk
 
@@ -86,7 +90,7 @@ def main():
                 for s, h in connections.items():
                     try:
                         SendNotification(h, s)
-                    except socket.error:
+                    except OSError:
                         #remove the dead
                         wait_for.remove(s)
                         try:
@@ -98,10 +102,10 @@ def main():
                         except KeyError:
                             pass
 
-            elif sckt==discovery:
+            elif sckt==discovery or sckt==anounce:
                 logging.debug("discovered a client")
                 #a new client is waiting for us to connect
-                data, sender = discovery.recvfrom(4096)
+                data, sender = sckt.recvfrom(4096)
 
                 dev = handle_identity(data)
 
@@ -114,7 +118,7 @@ def main():
                     ts = socket.socket()
                     try:
                         ts.connect((sender[0], tcp_port))
-                    except TimeoutError:
+                    except OSError:
                         continue
                     send_identity(ts)
                     #send_pair(ts, key.publickey().exportKey())
@@ -144,7 +148,7 @@ def main():
                 data = b""
                 try:
                     data = sckt.recv(4096)
-                except socket.error:
+                except OSError:
                     pass
                 
                 #get data from other stations

@@ -38,26 +38,30 @@ from Crypto.Cipher import PKCS1_v1_5
 from select import select
 from json import loads
 
-from KDEConnectNotifier.consts import PAIRING, KEY_PEER, DISCOVERY_PORT
+from KDEConnectNotifier.consts import PAIRING, KEY_PEER, DISCOVERY_PORT, DESKTOPS_PORT
 from KDEConnectNotifier.kde_con_proto import get_key, handle_identity, send_identity, send_pair, netpkt
 
 def main():
     pkey = get_key().publickey().exportKey()
     
     # listen for packet on UDP socket
-    discovery = socket.socket(type=socket.SOCK_DGRAM)
-    discovery.bind(('0.0.0.0', DISCOVERY_PORT))
-    discovery.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    discovery4 = socket.socket(type=socket.SOCK_DGRAM)
+    discovery4.bind(('0.0.0.0', DISCOVERY_PORT))
+    discovery4.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+    # listen for packet on UDP socket
+    anounce = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    anounce.bind(('::', DESKTOPS_PORT))
 
     #listen for new clients
-    server = socket.socket()
-    server.bind(('0.0.0.0', DISCOVERY_PORT))
+    server = socket.socket(socket.AF_INET6)
+    server.bind(('::', DISCOVERY_PORT))
     server.listen(15)
 
-    wait_for = [discovery, server]
+    wait_for = [discovery4, server, anounce]
     connections = {}
 
-    send_identity(discovery)
+    send_identity(discovery4)
 
     try:
         print("Discovering... Strg+C to quit")
@@ -71,9 +75,9 @@ def main():
                 # listen to broadcast
                 # -> connect
                 # -> send ident
-                if sckt==discovery:
+                if sckt==discovery4 or sckt==anounce:
                     #a new client is waiting for us to connect
-                    data, sender = discovery.recvfrom(4096)
+                    data, sender = sckt.recvfrom(4096)
 
                     dev = handle_identity(data, get_unpaired=True)
 
@@ -102,7 +106,7 @@ def main():
                         ts.close()
 
             for con in wait_for:
-                if con==server or con==discovery:
+                if con in [discovery4, server, anounce]:
                     continue
                 dev = connections[con]
                 #ask user if its ok to pair
@@ -126,8 +130,8 @@ def main():
                 else:
 
                     pkt = netpkt(PAIRING, {'pair': False})
-                    ts.send(pkt)
-                    ts.send(b'\n')
+                    con.send(pkt)
+                    con.send(b'\n')
                 wait_for.remove(con)
                 con.close()
 
