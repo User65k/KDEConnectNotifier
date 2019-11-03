@@ -3,7 +3,7 @@ Send notifications to KDEConnect and receive commands.
 
 I use it as a door bell notification with the [DoorBerryServer](https://github.com/User65k/DoorBerryServer)
 
-All cedit for KDE Connect in Python to <https://github.com/bboozzoo/kdeconnect-python-mock>.
+All cedit for KDE Connect (V5) in Python to <https://github.com/bboozzoo/kdeconnect-python-mock>.
 
 ## Usage
 

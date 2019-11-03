@@ -24,14 +24,18 @@ import logging
 from json import loads, dumps
 from time import time
 from os import path
-from base64 import b64decode, b64encode
-from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_v1_5
-from socket import SOCK_DGRAM, gethostname
 
-from KDEConnectNotifier.consts import DESKTOPS_PORT, DISCOVERY_PORT, PAIRING, NOTIFICATION, RUNCOMMAND, ENCRYPTED, IDENTITY, KEY_FILE_NAME, KEY_PEER
+import socket
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
+
+from KDEConnectNotifier.consts import DESKTOPS_PORT, DISCOVERY_PORT, PAIRING, NOTIFICATION, RUNCOMMAND, IDENTITY, KEY_FILE_NAME, KEY_PEER
+
 
 OUR_KDE_DEVID = None
+
+
 def getKdeDevId():
     """return an identifier for this host.
     On android ANDROID_ID (64bit number as 16byte hexstr) is used.
@@ -93,154 +97,220 @@ def send_identity(ts):
     """
     pl = {
         'deviceId': getKdeDevId(),
-        'deviceName': gethostname(),
+        'deviceName': socket.gethostname(),
         'deviceType': 'desktop',
-        'protocolVersion': 5,
-        'SupportedIncomingInterfaces': [RUNCOMMAND],
-        'SupportedOutgoingInterfaces': [NOTIFICATION, RUNCOMMAND]
+        #'protocolVersion': 5,
+        #'SupportedIncomingInterfaces': [RUNCOMMAND],
+        #'SupportedOutgoingInterfaces': [NOTIFICATION, RUNCOMMAND]
+        'protocolVersion': 7,
+        'incomingCapabilities': [RUNCOMMAND],
+        'outgoingCapabilities': [NOTIFICATION, RUNCOMMAND]
     }
-    if ts.type == SOCK_DGRAM:
+    if ts.type == socket.SOCK_DGRAM:
         pl['tcpPort'] = str(DISCOVERY_PORT)
 
     pkt = netpkt(IDENTITY,pl)
-    logging.debug('identity: %s', pkt)
-    if ts.type == SOCK_DGRAM:
+    logging.debug('own identity: %s', pkt)
+    if ts.type == socket.SOCK_DGRAM:
         ts.sendto(pkt+b'\n',('<broadcast>',DESKTOPS_PORT))
     else:
-        ts.send(pkt)
-        ts.send(b'\n')
+        ts.sendall(pkt)
+        ts.sendall(b'\n')
 
-def send_pair(ts, key):
-    """
-    :param socket.socket ts: socket to send on
-    :param: PEM encoded public key
-    """
-    # logging.debug('public key: %s', key)
-
-    pkt = netpkt(PAIRING,
-                 {'pair': True, 'publicKey': key.decode('ascii')})
-    logging.debug('pair request: %s', pkt)
-    ts.send(pkt)
-    ts.send(b'\n')
-
-def handle_packets(pkts, cipher, host, socket, callbacks = default_callbacks):
-    """
-    :param list pkts: list of packets
-    :param Crypto.Cipher.PKCS1_v1_5 cipher: decryption class
-    :param str host: DeviceID of the peer we talk to
-    :param socket.socket socket: socket
-    :param dict callbacks: TYPE -> function(body, host, socket)
-    """
-    for pkt in pkts:
-        try:
-            p = loads(pkt)
-            if p['type'] == ENCRYPTED:
-                logging.debug('encrypted packet')
-
-                data = ''
-                for data_chunk in p['body']['data']:
-                    logging.debug('encrypted data: %s', data_chunk)
-                    dec = cipher.decrypt(b64decode(data_chunk), None)
-                    # dec = cipher.decrypt(data_chunk, None)
-                    if not dec:
-                        logging.error('failed to decrypt packet data, perhaps need to pair again?')
-                    else:
-                        logging.debug('decrypted: %r', dec)
-                        try:
-                            data += dec.decode('utf-8')
-                        except UnicodeDecodeError as e:
-                            logging.exception(dec, exc_info=e)
-
-                if data:
-                    logging.debug('decrypted data: %r', data)
-                    p = loads(data)
-                    cmd = p['type']
-                    if cmd in callbacks:
-                        callbacks[cmd](p['body'], host, socket)
-                    
-                else:
-                    logging.debug('no data available')
-            elif p['type'] == PAIRING:
-                with open(KEY_PEER % (host), 'r') as ref:
-                    old = ref.read()
-                    new = p['body']['publicKey']
-                    if old == new:
-                        #same Key, good
-                        pass
-                    else:
-                        #bad
-                        logging.warning('wrong key\n--\n%s\n---\n%s\n---', old, new)
-                        socket.close()
-            else:
-                logging.info('other type: %s', p['type'])
-
-        except ValueError as e:
-            logging.exception(pkt, exc_info=e)
-
-def send_crypted(clear, host, socket):
-    """
-    Send encrypted packet to peer
-    :param str host: DeviceID of the peer we talk to
-    :param socket.socket socket: socket
-    """
-    key = None
-    with open(KEY_PEER % (host), 'rb') as inf:
-        key = RSA.importKey(inf.read())
-    cipher = PKCS1_v1_5.new(key)
-
-    #longer than the RSA modulus (in bytes) minus 11
-    chunks, chunk_size = len(clear), 245
-    parts = [ clear[i:i+chunk_size] for i in range(0, chunks, chunk_size) ]
-    enc = []
-    for plain in parts:
-        enc.append( b64encode(cipher.encrypt(plain), None).decode('ascii') )
-
-    pkt = netpkt(ENCRYPTED,
-                {'data':enc
-                })
-    socket.send(pkt)
-    socket.send(b'\n')
-
-def get_key():
-    """
-    Load private key from file or generate a new one
-    :return: RSA key object
-    :rtype: RSA
-    """
-    if path.exists(KEY_FILE_NAME):
-        with open(KEY_FILE_NAME, 'rb') as inf:
-            key = RSA.importKey(inf.read())
-    else:
-        key = RSA.generate(2048)
-        with open(KEY_FILE_NAME, 'wb') as outf:
-            outf.write(key.exportKey('PEM'))
-    return key
 
 def handle_identity(data, get_unpaired=False):
+        """
+        Check if data steam is connected to a device
+
+        :param bytes data: bytes containing identity packet of peer
+        :param bool get_unpaired: also return unpaired devices. Delaut no
+        :return: IDENTITY description. keys: deviceId, deviceName, deviceType, tcpPort (opt)
+        :rtype: dict
+        """
+        try:
+            pkt = loads(data.decode('ascii').strip())
+            logging.debug('discovered: %r', pkt)
+            if pkt['type'] == IDENTITY:
+                devID = pkt['body']['deviceId']
+
+                if devID == getKdeDevId():
+                    #always ignore yourself
+                    return None
+                
+                already_paired = path.exists(KEY_PEER % (devID))
+                if get_unpaired or already_paired:
+                    pkt['body']['paired'] = already_paired
+                    return pkt['body']
+
+        except ValueError:
+            print(data)
+        except KeyError:
+            print(data)
+
+        return None
+
+def mem_find(memview, search):
+    needle = ord(search)
+    i = 0
+    l = len(memview)
+    while i < l:
+        if memview[i] == needle:
+            return i
+        i += 1
+    return -1
+
+class ConnectionManager():
+    def __init__(self):
+        self.priv_key = self.get_key()
+
+    def get_key(self):
+        """
+        Load private key from file or generate a new one
+        :return: RSA key object
+        :rtype: RSA
+        """
+        private_key = None
+        if path.exists(KEY_FILE_NAME):
+            with open(KEY_FILE_NAME, 'rb') as inf:
+                private_key = serialization.load_pem_private_key(
+                    inf.read(),
+                    password=None,
+                    backend=default_backend()
+                )
+        else:
+            private_key = rsa.generate_private_key(
+                public_exponent=65537,
+                key_size=2048,
+                backend=default_backend()
+            )
+            with open(KEY_FILE_NAME, 'wb') as outf:
+                outf.write(private_key.private_bytes(
+                   encoding=serialization.Encoding.PEM,
+                   format=serialization.PrivateFormat.TraditionalOpenSSL,
+                   encryption_algorithm=serialization.NoEncryption()
+                ))
+        return private_key
+
+    def prep_con_for(self, dev_json):
+        logging.debug("prep_con_for:")
+        logging.debug(dev_json)
+        if dev_json['protocolVersion'] == 5:
+            from KDEConnectNotifier.kde_con_v5 import KDEConnectionProto5
+            return KDEConnectionProto5(self.priv_key, dev_json)
+        elif dev_json['protocolVersion'] == 7:
+            from KDEConnectNotifier.kde_con_v7 import KDEConnectionProto7
+            return KDEConnectionProto7(self.priv_key, dev_json)
+        else:
+            raise ValueError("Protocol Version not supported")
+
+    def get_sockets(self):
+        # listen for packet on UDP socket
+        discovery = socket.socket(type=socket.SOCK_DGRAM)
+        discovery.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        discovery.bind(('0.0.0.0', DISCOVERY_PORT))
+        discovery.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+        # listen for packet on UDP socket
+        anounce = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        anounce.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        anounce.bind(('::', DESKTOPS_PORT))
+
+        #listen for new clients
+        server = socket.socket(socket.AF_INET6)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(('::', DISCOVERY_PORT))
+        server.listen(5)
+        return (discovery, anounce, server)
+
+    def accept(self, new_con, get_unpaired=False):
+        dev = handle_identity(new_con.recv(4096), get_unpaired)
+        if dev is None:
+            return None
+        con = self.prep_con_for(dev)
+        if con is None:
+            return None
+        con.incomingsock(new_con)
+        return con
+
+class KDEConnection():
     """
-    Check if data steam is connected to a device
-
-    :param bytes data: bytes containing identity packet of peer
-    :param bool get_unpaired: also return unpaired devices. Delaut no
-    :return: IDENTITY description. keys: deviceId, deviceName, deviceType, tcpPort (opt)
-    :rtype: dict
+    connection to a single device
     """
-    try:
-        pkt = loads(data.decode('ascii').strip())
-        logging.debug('discovered: %r', pkt)
-        if pkt['type'] == IDENTITY:
-            devID = pkt['body']['deviceId']
+    
+    def __init__(self, dev_ident):
+        self.dev_ident = dev_ident
+        self.socket = None
+        self.log = logging.getLogger(dev_ident["deviceName"])
 
-            if devID == getKdeDevId():
-                #always ignore yourself
-                return None
-            
-            if get_unpaired or path.exists(KEY_PEER % (devID)):
-                return pkt['body']
+    def close(self):
+        if self.socket is not None:
+            self.socket.close()
 
-    except ValueError:
-        print(data)
-    except KeyError:
-        print(data)
+    def __getattr__(self, attr):
+        return self.dev_ident[attr]
 
-    return None
+    def fileno(self):
+        """for select"""
+        return self.socket.fileno()
+
+    def connect(self, addr):
+        self.socket = socket.socket()
+        try:
+            self.socket.connect(addr)
+        except OSError:
+            return False
+        send_identity(self.socket)
+        return True
+    
+    def incomingsock(self, sock):
+        self.socket = sock
+
+    def handle_packets(self, pkts, callbacks):
+        raise NotImplementedError()
+
+    def recv_and_handle(self, **kwargs):
+        if "callbacks" not in kwargs:
+            kwargs["callbacks"] = default_callbacks
+        data = b""
+        try:
+            data = self.socket.recv(4096)
+        except OSError:
+            pass
+        
+        if not data:
+            #remove the dead
+            self.socket.close()
+            return False
+
+        self.log.debug("got peer data")
+        pending_pkt = self.pending_data
+        pending_pkt += data
+        pending_pkt = memoryview(pending_pkt)
+        pos = mem_find(pending_pkt, '\n')
+        if pos == -1:
+            self.log.debug('expecting more data')
+        else:
+            pkts = []
+            # self.log.debug('pos %r', pos)
+            while len(pending_pkt) > 0 and pos != -1:
+                pkt = pending_pkt[0:pos]
+                if len(pkt) > 0:
+                    pkts.append(bytes(pkt))
+                    self.log.debug('got pkt: \'%s\'', pkts[-1])
+                pending_pkt = pending_pkt[pos + 1:]
+                # self.log.debug('rest: \'%s\'', pending_pkt)
+                pos = mem_find(pending_pkt, '\n')
+                # self.log.debug('pos %r', pos)
+
+            self.log.debug('found %d complete packets', len(pkts))
+            self.handle_packets(pkts, **kwargs)
+        
+        #remember half pkgs
+        self.pending_data = pending_pkt
+        return True
+
+    def send_crypted(self, data):
+        raise NotImplementedError()
+
+    def pair(self, accept_paring):
+        raise NotImplementedError()
